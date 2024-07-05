@@ -304,6 +304,12 @@ msgstr "乐观缓存 TTL"
 msgid "Lazy cache survival time (in second). To disable Lazy Cache, please set to 0."
 msgstr "乐观缓存生存时间（单位：秒），要禁用乐观缓存，请设置为 0"
 
+msgid "No Remote Cache"
+msgstr "关闭远程缓存"
+
+msgid "Domains that are not Chinese are not cached"
+msgstr "非中国大陆域名不进行缓存"
+
 msgid "Cache Dump"
 msgstr "自动保存缓存"
 
