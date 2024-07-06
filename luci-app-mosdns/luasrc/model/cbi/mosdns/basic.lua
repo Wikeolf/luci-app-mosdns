@@ -160,7 +160,7 @@ o.datatype = "and(uinteger,min(0))"
 o.default = "86400"
 o:depends("configfile", "/var/etc/mosdns.json")
 
-o = s:taboption("advanced", Value, "nocn_cache", translate("No Remote Cache"), translate("Domains that are not Chinese are not cached"))
+o = s:taboption("advanced", Flag, "nocn_cache", translate("No Remote Cache"), translate("Domains that are not Chinese are not cached"))
 o.rmempty = false
 o.default = false
 o:depends("configfile", "/var/etc/mosdns.json")
