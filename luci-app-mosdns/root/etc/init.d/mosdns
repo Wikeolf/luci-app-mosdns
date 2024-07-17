@@ -36,6 +36,7 @@ get_config() {
     config_get cache_size $1 cache_size 8000
     config_get lazy_cache_ttl $1 lazy_cache_ttl 86400
     config_get nocn_cache $1 nocn_cache 0
+    config_get fakeip_bypass_mode $1 fakeip_bypass_mode 0
     config_get dump_file $1 dump_file 0
     config_get dump_interval $1 dump_interval 3600
     config_get enable_pipeline $1 enable_pipeline 0
@@ -54,6 +55,7 @@ get_config() {
     config_get apple_optimization $1 apple_optimization 0
     config_get custom_stream_media_dns $1 custom_stream_media_dns 0
     config_get stream_media_dns $1 stream_media_dns "tls://8.8.8.8"
+    config_get fakeip_dns $1 fakeip_dns "tls://8.8.8.8"
     config_get bootstrap_dns $1 bootstrap_dns "119.29.29.29"
     config_get listen_port_api $1 listen_port_api 9091
     config_get concurrent $1 concurrent 1
@@ -231,6 +233,28 @@ generate_config() {
     json_close_array
     json_close_object
     json_close_object
+    [ "$fakeip_bypass_mode" -eq 1 ] && {
+        # plugin: local_no_proxy
+        json_add_object
+        json_add_string "tag" "local_no_proxy"
+        json_add_string "type" "ip_set"
+        json_add_object "args"
+        json_add_array "files"
+        json_add_string "" "/etc/mosdns/rule/local-no-proxy.txt"
+        json_close_array
+        json_close_object
+        json_close_object
+        # plugin: local_proxy
+        json_add_object
+        json_add_string "tag" "local_proxy"
+        json_add_string "type" "ip_set"
+        json_add_object "args"
+        json_add_array "files"
+        json_add_string "" "/etc/mosdns/rule/local-proxy.txt"
+        json_close_array
+        json_close_object
+        json_close_object
+    }
     # plugin: lazy_cache
     json_add_object
     json_add_string "tag" "lazy_cache"
@@ -376,6 +400,41 @@ generate_config() {
     json_close_object
     json_close_array
     json_close_object
+    # plugin: forward_fakeip
+    json_add_object
+    json_add_string "tag" "forward_fakeip"
+    json_add_string "type" "forward"
+    json_add_object "args"
+    json_add_int "concurrent" "$concurrent"
+    json_add_array "upstreams"
+    for addr in $fakeip_dns; do
+        enable_http3=0
+        if echo "$addr" | grep -q "^h3://"; then
+            enable_http3=1
+            addr=$(echo $addr | sed 's/h3:\/\//https:\/\//g')
+        fi
+        json_add_object
+        json_add_string "addr" "$addr"
+        json_add_string "bootstrap" "$bootstrap_dns"
+        json_add_boolean "enable_pipeline" "$enable_pipeline"
+        json_add_boolean "insecure_skip_verify" "$insecure_skip_verify"
+        json_add_int "idle_timeout" "$idle_timeout"
+        [ "$enable_http3" -eq 1 ] && json_add_boolean "enable_http3" "1"
+        json_close_object
+    done
+    json_close_array
+    json_close_object
+    json_close_object
+    # plugin: forward_fakeip_upstream
+    json_add_object
+    json_add_string "tag" "forward_fakeip_upstream"
+    json_add_string "type" "sequence"
+    json_add_array "args"
+    json_add_object
+    json_add_string "exec" "\$forward_fakeip"
+    json_close_object
+    json_close_array
+    json_close_object
     # plugin: modify_ttl
     json_add_object
     json_add_string "tag" "modify_ttl"
@@ -493,17 +552,49 @@ generate_config() {
     json_close_object
     json_close_array
     json_close_object
-    # plugin: query_is_no_local_domain
-    json_add_object
-    json_add_string "tag" "query_is_no_local_domain"
-    json_add_string "type" "sequence"
-    json_add_array "args"
-    json_add_object
-    json_add_string "matches" "qname \$geosite_no_cn"
-    json_add_string "exec" "\$forward_remote_upstream"
-    json_close_object
-    json_close_array
-    json_close_object
+    [ "$fakeip_bypass_mode" -eq 1 ] && {
+        # plugin: query_is_from_local_proxy_ip
+        json_add_object
+        json_add_string "tag" "query_is_from_local_proxy_ip"
+        json_add_string "type" "sequence"
+        json_add_array "args"
+        json_add_object
+        json_add_array "matches"
+        json_add_string "" "qname \$geosite_no_cn"
+        json_add_string "" "client_ip \$$local_proxy"
+        json_close_array
+        json_add_string "exec" "\$forward_fakeip_upstream"
+        json_close_object
+        json_close_array
+        json_close_object
+        # plugin: query_is_from_local_no_proxy_ip
+        json_add_object
+        json_add_string "tag" "query_is_from_local_no_proxy_ip"
+        json_add_string "type" "sequence"
+        json_add_array "args"
+        json_add_object
+        json_add_array "matches"
+        json_add_string "" "qname \$geosite_no_cn"
+        json_add_string "" "client_ip \$local_no_proxy"
+        json_close_array
+        json_add_string "exec" "\$forward_remote_upstream"
+        json_close_object
+        json_close_array
+        json_close_object
+    }
+    [ "$fakeip_bypass_mode" -eq 0 ] && {
+        # plugin: query_is_no_local_domain
+        json_add_object
+        json_add_string "tag" "query_is_no_local_domain"
+        json_add_string "type" "sequence"
+        json_add_array "args"
+        json_add_object
+        json_add_string "matches" "qname \$geosite_no_cn"
+        json_add_string "exec" "\$forward_remote_upstream"
+        json_close_object
+        json_close_array
+        json_close_object
+    }
     # plugin: query_is_whitelist_domain
     json_add_object
     json_add_string "tag" "query_is_whitelist_domain"
@@ -636,12 +727,28 @@ generate_config() {
     json_add_object
     json_add_string "exec" "jump has_resp_sequence"
     json_close_object
-    json_add_object
-    json_add_string "exec" "\$query_is_no_local_domain"
-    json_close_object
-    json_add_object
-    json_add_string "exec" "jump has_resp_sequence"
-    json_close_object
+    [ "$fakeip_bypass_mode" -eq 0 ] && {
+        json_add_object
+        json_add_string "exec" "\$query_is_no_local_domain"
+        json_close_object
+        json_add_object
+        json_add_string "exec" "jump has_resp_sequence"
+        json_close_object
+    }
+    [ "$fakeip_bypass_mode" -eq 1 ] && {
+        json_add_object
+        json_add_string "exec" "\$query_is_from_local_no_proxy_ip"
+        json_close_object
+        json_add_object
+        json_add_string "exec" "jump has_resp_sequence"
+        json_close_object
+        json_add_object
+        json_add_string "exec" "\$query_is_from_local_proxy_ip"
+        json_close_object
+        json_add_object
+        json_add_string "exec" "jump has_resp_sequence"
+        json_close_object
+    }
     json_add_object
     json_add_string "exec" "\$fallback"
     json_close_object

@@ -417,3 +417,24 @@ msgstr "流媒体"
 
 msgid "These domains are always resolved using Streaming Media DNS. Please input the domain names of websites, every line can input only one website domain. For example: netflix.com."
 msgstr "启用 “自定义流媒体 DNS” 时，加入的域名始终使用 “流媒体 DNS 服务器” 进行解析（每个域名一行，支持域名匹配规则）"
+
+msgid "Enable FakeIP DNS and support bypass"
+msgstr "启用 FakeIP DNS 并支持 FakeIP 分流"
+
+msgid "Enable FakeIP bypass mode, DNS requestion from specified client ip will be forwarded to FakeIP DNS"
+msgstr "启用 FakeIP 分流模式，指定客户端 IP 的 DNS 请求将被转发到 FakeIP DNS"
+
+msgid "FakeIP DNS server, usually installed by user"
+msgstr "FakeIP DNS 服务器，通常由用户自行安装"
+
+msgid "Local Proxy BlackList"
+msgstr "局域网代理黑名单"
+
+msgid "Local Proxy WhiteList"
+msgstr "局域网代理名单"
+
+msgid "These ips are always resolved using True IP DNS. Please input as CIDR format"
+msgstr "加入的 IP 地址始终使用 “真实 IP DNS” 进行解析（每个 IP 地址一行，支持 CIDR 格式）"
+
+msgid "These ips are always resolved using Fake IP DNS. Please input as CIDR format"
+msgstr "加入的 IP 地址始终使用 “Fake IP DNS” 进行解析（每个 IP 地址一行，支持 CIDR 格式）"

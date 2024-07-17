@@ -101,6 +101,22 @@ o:value("tls://208.67.220.220", translate("Cisco Public DNS (208.67.220.220)"))
 o.default = "tls://8.8.8.8"
 o:depends("custom_stream_media_dns", "1")
 
+o = s:taboption("basic", Flag, "fakeip_bypass_mode", translate("Enable FakeIP DNS and support bypass"), translate("Enable FakeIP bypass mode, DNS requestion from specified client ip will be forwarded to FakeIP DNS"))
+o:depends( "configfile", "/var/etc/mosdns.json")
+o.default = false
+
+o = s:taboption("basic", DynamicList, "fakeip_dns", translate("FakeIP DNS server, usually installed by user"))
+o:value("tls://1.1.1.1", translate("CloudFlare Public DNS (1.1.1.1)"))
+o:value("tls://1.0.0.1", translate("CloudFlare Public DNS (1.0.0.1)"))
+o:value("tls://8.8.8.8", translate("Google Public DNS (8.8.8.8)"))
+o:value("tls://8.8.4.4", translate("Google Public DNS (8.8.4.4)"))
+o:value("tls://9.9.9.9", translate("Quad9 Public DNS (9.9.9.9)"))
+o:value("tls://149.112.112.112", translate("Quad9 Public DNS (149.112.112.112)"))
+o:value("tls://208.67.222.222", translate("Cisco Public DNS (208.67.222.222)"))
+o:value("tls://208.67.220.220", translate("Cisco Public DNS (208.67.220.220)"))
+o.default = "tls://8.8.8.8"
+o:depends("fakeip_bypass_mode", "1")
+
 o = s:taboption("basic", ListValue, "bootstrap_dns", translate("Bootstrap DNS servers"), translate("Bootstrap DNS servers are used to resolve IP addresses of the DoH/DoT resolvers you specify as upstreams"))
 o:value("119.29.29.29", translate("Tencent Public DNS (119.29.29.29)"))
 o:value("119.28.28.28", translate("Tencent Public DNS (119.28.28.28)"))
