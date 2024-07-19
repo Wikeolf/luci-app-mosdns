@@ -181,6 +181,11 @@ o.rmempty = false
 o.default = false
 o:depends("configfile", "/var/etc/mosdns.json")
 
+o = s:taboption("advanced", Flag, "fakeip_bypass_proxy_blacklist_mode", translate("Using Blacklist in FakeIP bypass mode"), translate("The DNS request from the IP addresses which not in the blacklist will be forwarded to FakeIP DNS"))
+o.rmempty = false
+o.default = false
+o:depends("configfile", "/var/etc/mosdns.json")
+
 o = s:taboption("advanced", Flag, "dump_file", translate("Cache Dump"), translate("Save the cache locally and reload the cache dump on the next startup"))
 o.rmempty = false
 o.default = false

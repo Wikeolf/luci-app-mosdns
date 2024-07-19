@@ -438,3 +438,9 @@ msgstr "加入的 IP 地址始终使用 “真实 IP DNS” 进行解析（每�
 
 msgid "These ips are always resolved using Fake IP DNS. Please input as CIDR format"
 msgstr "加入的 IP 地址始终使用 “Fake IP DNS” 进行解析（每个 IP 地址一行，支持 CIDR 格式）"
+
+msgid "Using Blacklist in FakeIP bypass mode"
+msgstr "在 FakeIP 分流模式下使用黑名单"
+
+msgid "The DNS request from the IP addresses which not in the blacklist will be forwarded to FakeIP DNS"
+msgstr "来自不在黑名单中的 IP 地址的 DNS 请求将被转发到 FakeIP DNS"
