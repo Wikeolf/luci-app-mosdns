@@ -37,6 +37,7 @@ get_config() {
     config_get lazy_cache_ttl $1 lazy_cache_ttl 86400
     config_get nocn_cache $1 nocn_cache 0
     config_get fakeip_bypass_mode $1 fakeip_bypass_mode 0
+    config_get fakeip_bypass_proxy_blacklist_mode $1 fakeip_bypass_proxy_blacklist_mode 0
     config_get dump_file $1 dump_file 0
     config_get dump_interval $1 dump_interval 3600
     config_get enable_pipeline $1 enable_pipeline 0
