@@ -47,6 +47,10 @@ o:depends("configfile", "/var/etc/mosdns.json")
 o = s:taboption("basic", Flag, "redirect", translate("DNS Forward"), translate("Forward Dnsmasq Domain Name resolution requests to MosDNS"))
 o.default = true
 
+o = s:taboption("basic", Flag, "fakeip_bypass_mode", translate("Enable FakeIP bypass mode"), translate("Remote DNS requests sent by specific clients return FakeIP results"))
+o:depends( "configfile", "/var/etc/mosdns.json")
+o.default = false
+
 o = s:taboption("basic", Flag, "prefer_ipv4", translate("Remote DNS prefer IPv4"), translate("IPv4 is preferred for Remote / Streaming Media DNS resolution of dual-stack addresses, and is not affected when the destination is IPv6 only"))
 o:depends( "configfile", "/var/etc/mosdns.json")
 o.default = true
@@ -101,11 +105,7 @@ o:value("tls://208.67.220.220", translate("Cisco Public DNS (208.67.220.220)"))
 o.default = "tls://8.8.8.8"
 o:depends("custom_stream_media_dns", "1")
 
-o = s:taboption("basic", Flag, "fakeip_bypass_mode", translate("Enable FakeIP DNS and support bypass"), translate("Enable FakeIP bypass mode, DNS requestion from specified client ip will be forwarded to FakeIP DNS"))
-o:depends( "configfile", "/var/etc/mosdns.json")
-o.default = false
-
-o = s:taboption("basic", DynamicList, "fakeip_dns", translate("FakeIP DNS server, usually installed by user"))
+o = s:taboption("basic", DynamicList, "fakeip_dns", translate("FakeIP DNS server"), translate("Usually installed by the user"))
 o:value("tls://1.1.1.1", translate("CloudFlare Public DNS (1.1.1.1)"))
 o:value("tls://1.0.0.1", translate("CloudFlare Public DNS (1.0.0.1)"))
 o:value("tls://8.8.8.8", translate("Google Public DNS (8.8.8.8)"))

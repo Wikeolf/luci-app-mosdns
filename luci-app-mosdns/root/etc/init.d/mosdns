@@ -569,6 +569,9 @@ generate_config() {
         [ "$fakeip_bypass_proxy_blacklist_mode" -eq 1 ] && json_add_string "exec" "\$forward_remote_upstream"
         json_close_object
         json_add_object
+        json_add_string "exec" "return"
+        json_close_object
+        json_add_object
         json_add_string "matches" "qname \$geosite_no_cn"
         [ "$fakeip_bypass_proxy_blacklist_mode" -eq 0 ] && json_add_string "exec" "\$forward_remote_upstream"
         [ "$fakeip_bypass_proxy_blacklist_mode" -eq 1 ] && json_add_string "exec" "\$forward_fakeip_upstream"

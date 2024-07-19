@@ -24,8 +24,8 @@ s:tab("hosts_list", translate("Hosts"))
 s:tab("redirect_list", translate("Redirect"))
 s:tab("local_ptr_list", translate("Block PTR"))
 s:tab("streaming_media_list", translate("Streaming Media"))
-s:tab("local_no_proxy_list", translate("Local Proxy BlackList"))
-s:tab("local_proxy_list", translate("Local Proxy WhiteList"))
+s:tab("local_no_proxy_list", translate("Lan Proxy BlackList"))
+s:tab("local_proxy_list", translate("Lan Proxy WhiteList"))
 
 o = s:taboption("white_list", TextValue, "whitelist", "", "<font color='red'>" .. translate("These domain names allow DNS resolution with the highest priority. Please input the domain names of websites, every line can input only one website domain. For example: hm.baidu.com.") .. "</font>" .. "<font color='#00bd3e'>" .. translate("<br>The list of rules only apply to 'Default Config' profiles.") .. "</font>")
 o.rows = 15
