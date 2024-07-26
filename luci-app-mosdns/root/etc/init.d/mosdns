@@ -361,6 +361,11 @@ generate_config() {
         json_add_string "exec" "ecs $remote_ecs_ip"
         json_close_object
     }
+    [ "$log_level" -eq "debug" ] && {
+        json_add_object
+        json_add_string "exec" "query_summary remotedebug"
+        json_close_object
+    }
     json_add_object
     json_add_string "exec" "\$forward_remote"
     json_close_object
@@ -441,6 +446,11 @@ generate_config() {
     json_add_string "tag" "forward_fakeip_upstream"
     json_add_string "type" "sequence"
     json_add_array "args"
+    [ "$log_level" -eq "debug" ] && {
+        json_add_object
+        json_add_string "exec" "query_summary fakeipdebug"
+        json_close_object
+    }
     json_add_object
     json_add_string "exec" "\$forward_fakeip"
     json_close_object
