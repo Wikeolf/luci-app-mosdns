@@ -447,3 +447,6 @@ msgstr "在 FakeIP 分流模式下使用黑名单"
 
 msgid "The DNS request from the IP addresses which not in the blacklist will be forwarded to FakeIP DNS"
 msgstr "来自不在黑名单中的 IP 地址的 DNS 请求将被转发到 FakeIP DNS"
+
+msgid "These domains are always resolved using FakeIP DNS. Please input the domain names of websites, every line can input only one website domain. For example: v2.hysteria.network."
+msgstr "加入的域名始终使用 “FakeIP DNS” 进行解析（每个域名一行，支持域名匹配规则）"

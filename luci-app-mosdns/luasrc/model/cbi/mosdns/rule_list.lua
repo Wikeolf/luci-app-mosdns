@@ -8,6 +8,7 @@ local redirect_list_file = "/etc/mosdns/rule/redirect.txt"
 local local_ptr_file = "/etc/mosdns/rule/local-ptr.txt"
 local ddns_list_file = "/etc/mosdns/rule/ddnslist.txt"
 local streaming_media_list_file = "/etc/mosdns/rule/streaming.txt"
+local fakeip_list_file = "/etc/mosdns/rule/fakeiplist.txt"
 local local_no_proxy_list_file = "/etc/mosdns/rule/local-no-proxy.txt"
 local local_proxy_list_file = "/etc/mosdns/rule/local-proxy.txt"
 
@@ -24,6 +25,7 @@ s:tab("hosts_list", translate("Hosts"))
 s:tab("redirect_list", translate("Redirect"))
 s:tab("local_ptr_list", translate("Block PTR"))
 s:tab("streaming_media_list", translate("Streaming Media"))
+s:tab("fakeip_list", translate("FakeIP Lists"))
 s:tab("local_no_proxy_list", translate("Lan Proxy BlackList"))
 s:tab("local_proxy_list", translate("Lan Proxy WhiteList"))
 
@@ -103,6 +105,16 @@ o.wrap = "off"
 o.cfgvalue = function(self, section) return nixio.fs.readfile(streaming_media_list_file) or "" end
 o.write = function(self, section, value) nixio.fs.writefile(streaming_media_list_file, value:gsub("\r\n", "\n")) end
 o.remove = function(self, section, value) nixio.fs.writefile(streaming_media_list_file, "") end
+o.validate = function(self, value)
+    return value
+end
+
+o = s:taboption("fakeip_list", TextValue, "fakeip", "", "<font color='red'>" .. translate("These domains are always resolved using FakeIP DNS. Please input the domain names of websites, every line can input only one website domain. For example: v2.hysteria.network.") .. "</font>" .. "<font color='#00bd3e'>" .. translate("<br>The list of rules only apply to 'Default Config' profiles.") .. "</font>")
+o.rows = 15
+o.wrap = "off"
+o.cfgvalue = function(self, section) return nixio.fs.readfile(fakeip_list_file) or "" end
+o.write = function(self, section, value) nixio.fs.writefile(fakeip_list_file, value:gsub("\r\n", "\n")) end
+o.remove = function(self, section, value) nixio.fs.writefile(fakeip_list_file, "") end
 o.validate = function(self, value)
     return value
 end
