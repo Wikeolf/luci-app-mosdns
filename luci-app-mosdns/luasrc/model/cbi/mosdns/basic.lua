@@ -184,7 +184,7 @@ o:depends("cache", "1")
 o = s:taboption("advanced", Flag, "nocn_cache", translate("No Remote Cache"), translate("Domains that are not Chinese are not cached"))
 o.rmempty = false
 o.default = false
-o:depends("configfile", "/var/etc/mosdns.json")
+o:depends("cache", "1")
 
 o = s:taboption("advanced", Flag, "fakeip_bypass_proxy_blacklist_mode", translate("Using Blacklist in FakeIP bypass mode"), translate("The DNS request from the IP addresses which not in the blacklist will be forwarded to FakeIP DNS"))
 o.rmempty = false
