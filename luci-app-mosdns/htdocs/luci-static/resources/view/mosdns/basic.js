@@ -296,6 +296,12 @@ return view.extend({
 		o.default = false;
 		o.depends('configfile', '/var/etc/mosdns.json');
 
+		o = s.taboption('advanced', form.Flag, 'remote_nocache', _('Disable Remote Cache'),
+			_('Enable this option will stop cache geosite_no_cn list resolve result from remote DNS'));
+		o.rmempty = false;
+		o.default = false;
+		o.depends('cache', '1');
+
 		o = s.taboption('advanced', form.Value, 'cache_size', _('DNS Cache Size'));
 		o.datatype = 'and(uinteger,min(0))';
 		o.default = 8000;

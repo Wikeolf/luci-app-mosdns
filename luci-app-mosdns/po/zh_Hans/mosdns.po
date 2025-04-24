@@ -344,6 +344,12 @@ msgstr "启用此选项 fallback 策略会强制转发到远程 DNS"
 msgid "Enable DNS Cache"
 msgstr "启用 DNS 缓存"
 
+msgid "Disable Remote Cache"
+msgstr "禁用远程 DNS 缓存"
+
+msgid "Enable this option will stop cache geosite_no_cn list resolve result from remote DNS"
+msgstr "启用此选项会停止缓存geosite_no_cn的远程DNS解析结果"
+
 msgid "DNS Cache Size"
 msgstr "DNS 缓存大小"
 
