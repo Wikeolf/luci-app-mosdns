@@ -34,6 +34,7 @@ get_config() {
 	config_get adblock $1 adblock 0
 	config_get ad_source $1 ad_source ""
 	config_get cache $1 cache 0
+	config_get remote_nocache $1 remote_nocache 0
 	config_get cache_size $1 cache_size 8000
 	config_get lazy_cache_ttl $1 lazy_cache_ttl 86400
 	config_get dump_file $1 dump_file 0
@@ -588,6 +589,7 @@ generate_config() {
 		json_add_string "" "!qname \$blocklist"
 		json_add_string "" "!qname \$adlist"
 		json_add_string "" "!qname \$local_ptr"
+		[ "$remote_nocache" -eq 1 ] && json_add_string "" "!qname \$geosite_no_cn"
 		json_close_array
 		json_add_string "exec" "\$lazy_cache"
 		json_close_object
