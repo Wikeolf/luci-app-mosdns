@@ -393,14 +393,12 @@ generate_config() {
 	json_add_array "args"
 	json_add_object
 	json_add_string "matches" "resp_ip \$geoip_cn"
+	json_add_string "exec" "mark 1"
+	json_close_object
+	json_add_object
+	json_add_string "matches" "mark 1"
 	json_add_string "exec" "\$forward_local"
 	json_close_object
-	[ "$remote_ipset" -eq 1 ] && {
-		json_add_object
-		json_add_string "matches" "!resp_ip \$geoip_cn"
-		json_add_string "exec" "ipset remote,inet,32 remote6,inet6,128"
-		json_close_object
-	}
 	json_close_array
 	json_close_object
 	# plugin: modify_ttl
@@ -451,12 +449,26 @@ generate_config() {
 		json_add_object
 		json_add_array "matches"
 		json_add_string "" "mark 2"
-		json_add_string "" "!qname \$whitelist"
 		json_add_string "" "!qname \$greylist"
 		json_add_string "" "!qname \$stream_media"
-		json_add_string "" "!resp_ip \$cloudflare_cidr"
 		json_close_array
 		json_add_string "exec" "jump return_local_dns"
+		json_close_object
+	}
+	[ "$remote_ipset" -eq 1 ] && {
+		json_add_object
+		json_add_array "matches"
+		json_add_string "" "mark 2"
+		json_add_string "" "!mark 1"
+		json_close_array
+		json_add_string "exec" "ipset remote,inet,32 remote6,inet6,128"
+		json_close_object
+		json_add_object
+		json_add_array "matches"
+		json_add_string "" "!mark 1"
+		json_add_string "" "qname \$greylist"
+		json_close_array
+		json_add_string "exec" "ipset remote,inet,32 remote6,inet6,128"
 		json_close_object
 	}
 	json_add_object
