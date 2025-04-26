@@ -280,6 +280,18 @@ return view.extend({
 		o.default = false;
 		o.depends('configfile', '/var/etc/mosdns.json');
 
+		o = s.taboption('advanced', form.Flag, 'china_fallback', _('China IP Fallback Resolver'),
+		_('Enable this option when remote DNS send a China ip result will resend to China DNS'));
+		o.rmempty = false;
+		o.default = false;
+		o.depends('dns_leak', '1');
+
+		o = s.taboption('advanced', form.Flag, 'remote_ipset', _('Store Remote ipset'),
+		_('Enabling this option stores the remote DNS resolution results in the remote remote6 ipset'));
+		o.rmempty = false;
+		o.default = false;
+		o.depends('china_fallback', '1');
+
 		o = s.taboption('advanced', form.Flag, 'cache', _('Enable DNS Cache'));
 		o.rmempty = false;
 		o.default = false;

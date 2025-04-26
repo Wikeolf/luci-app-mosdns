@@ -329,6 +329,18 @@ msgstr "防止 DNS 泄漏"
 msgid "Enable this option fallback policy forces forwarding to remote DNS"
 msgstr "启用此选项 fallback 策略会强制转发到远程 DNS"
 
+msgid "China IP Fallback Resolver"
+msgstr "国内IP回退解析"
+
+msgid "Enable this option when remote DNS send a China ip result will resend to China DNS"
+msgstr "启用此选项当远程 DNS 返回一个国内IP会被重新发送回国内DNS解析"
+
+msgid "Store Remote ipset"
+msgstr "存储远程解析结果到ipset"
+
+msgid "Enabling this option stores the remote DNS resolution results in the remote remote6 ipset"
+msgstr "启用此选项会存储远程 DNS 解析结果到 remote remote6 ipset中"
+
 msgid "Enable DNS Cache"
 msgstr "启用 DNS 缓存"
 
