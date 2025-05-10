@@ -1,0 +1,602 @@
+From a6f0dc6b231145b16b3fac725eb553e5e632cb12 Mon Sep 17 00:00:00 2001
+From: Wikeolf <Wikeolf@Gmail.com>
+Date: Sat, 10 May 2025 20:31:59 +0800
+Subject: [PATCH] feat: add forward_fakeip plugins support fakeip resolve and
+ direct resolve domain learning and add WriteableDomainMatcherProvider
+ interface and implement locking in DomainSet
+
+---
+ plugin/data_provider/domain_set/domain_set.go |  42 +-
+ plugin/data_provider/iface.go                 |   6 +
+ plugin/enabled_plugins.go                     |   1 +
+ .../sequence/fakeip/forward_fakeip.go         | 476 ++++++++++++++++++
+ 4 files changed, 522 insertions(+), 3 deletions(-)
+ create mode 100644 plugin/executable/sequence/fakeip/forward_fakeip.go
+
+diff --git a/plugin/data_provider/domain_set/domain_set.go b/plugin/data_provider/domain_set/domain_set.go
+index 20d7f90..120a625 100644
+--- a/plugin/data_provider/domain_set/domain_set.go
++++ b/plugin/data_provider/domain_set/domain_set.go
+@@ -22,10 +22,12 @@ package domain_set
+ import (
+ 	"bytes"
+ 	"fmt"
++	"os"
++	"sync"
++
+ 	"github.com/IrineSistiana/mosdns/v5/coremain"
+ 	"github.com/IrineSistiana/mosdns/v5/pkg/matcher/domain"
+ 	"github.com/IrineSistiana/mosdns/v5/plugin/data_provider"
+-	"os"
+ )
+ 
+ const PluginType = "domain_set"
+@@ -49,18 +51,52 @@ type Args struct {
+ }
+ 
+ var _ data_provider.DomainMatcherProvider = (*DomainSet)(nil)
++var _ data_provider.WriteableDomainMatcherProvider = (*DomainSet)(nil)
+ 
+ type DomainSet struct {
+-	mg []domain.Matcher[struct{}]
++	mg   []domain.Matcher[struct{}]
++	lock sync.RWMutex
+ }
+ 
+ func (d *DomainSet) GetDomainMatcher() domain.Matcher[struct{}] {
++	d.lock.RLock()
++	defer d.lock.RUnlock()
+ 	return MatcherGroup(d.mg)
+ }
+ 
++// Len 返回域名集合中的域名数量总和
++func (d *DomainSet) Len() int {
++	d.lock.RLock()
++	defer d.lock.RUnlock()
++
++	total := 0
++	for _, m := range d.mg {
++		// 尝试获取匹配器的长度
++		if lenGetter, ok := m.(interface{ Len() int }); ok {
++			total += lenGetter.Len()
++		}
++	}
++	return total
++}
++
++func (d *DomainSet) Add(exps []string, m *domain.MixMatcher[struct{}]) error {
++	d.lock.Lock()
++	defer d.lock.Unlock()
++
++	if err := LoadExps(exps, m); err != nil {
++		return err
++	}
++	if m.Len() > 0 {
++		d.mg = append(d.mg, m)
++	}
++	return nil
++}
++
+ // NewDomainSet inits a DomainSet from given args.
+ func NewDomainSet(bp *coremain.BP, args *Args) (*DomainSet, error) {
+-	ds := &DomainSet{}
++	ds := &DomainSet{
++		lock: sync.RWMutex{},
++	}
+ 
+ 	m := domain.NewDomainMixMatcher()
+ 	if err := LoadExpsAndFiles(args.Exps, args.Files, m); err != nil {
+diff --git a/plugin/data_provider/iface.go b/plugin/data_provider/iface.go
+index 7ec08d2..e5fd4c0 100644
+--- a/plugin/data_provider/iface.go
++++ b/plugin/data_provider/iface.go
+@@ -28,6 +28,12 @@ type DomainMatcherProvider interface {
+ 	GetDomainMatcher() domain.Matcher[struct{}]
+ }
+ 
++type WriteableDomainMatcherProvider interface {
++	GetDomainMatcher() domain.Matcher[struct{}]
++	Add(exps []string, m *domain.MixMatcher[struct{}]) error
++	Len() int
++}
++
+ type IPMatcherProvider interface {
+ 	GetIPMatcher() netlist.Matcher
+ }
+diff --git a/plugin/enabled_plugins.go b/plugin/enabled_plugins.go
+index 764811f..9d1830c 100644
+--- a/plugin/enabled_plugins.go
++++ b/plugin/enabled_plugins.go
+@@ -61,6 +61,7 @@ import (
+ 	_ "github.com/IrineSistiana/mosdns/v5/plugin/executable/sequence"
+ 	_ "github.com/IrineSistiana/mosdns/v5/plugin/executable/sequence/fallback"
+ 	_ "github.com/IrineSistiana/mosdns/v5/plugin/executable/sleep"
++	_ "github.com/IrineSistiana/mosdns/v5/plugin/executable/sequence/fakeip"
+ 	_ "github.com/IrineSistiana/mosdns/v5/plugin/executable/ttl"
+ 
+ 	// executable and matcher
+diff --git a/plugin/executable/sequence/fakeip/forward_fakeip.go b/plugin/executable/sequence/fakeip/forward_fakeip.go
+new file mode 100644
+index 0000000..19fc4ae
+--- /dev/null
++++ b/plugin/executable/sequence/fakeip/forward_fakeip.go
+@@ -0,0 +1,476 @@
++/*
++ * Copyright (C) 2020-2022, IrineSistiana
++ *
++ * This file is part of mosdns.
++ *
++ * mosdns is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * mosdns is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
++ */
++
++package fakeip
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"net"
++	"net/netip"
++	"sync"
++	"time"
++
++	"github.com/IrineSistiana/mosdns/v5/coremain"
++	"github.com/IrineSistiana/mosdns/v5/pkg/matcher/domain"
++	"github.com/IrineSistiana/mosdns/v5/pkg/matcher/netlist"
++	"github.com/IrineSistiana/mosdns/v5/pkg/query_context"
++	"github.com/IrineSistiana/mosdns/v5/plugin/data_provider"
++	"github.com/IrineSistiana/mosdns/v5/plugin/executable/sequence"
++	"github.com/miekg/dns"
++	"github.com/prometheus/client_golang/prometheus"
++	"go.uber.org/zap"
++)
++
++const PluginType = "forward_fakeip"
++
++const (
++	defaultParallelTimeout = time.Second * 5
++)
++
++func init() {
++	coremain.RegNewPluginFunc(PluginType, Init, func() any { return new(Args) })
++}
++
++type Args struct {
++	FakeResolver    string `yaml:"fake_resolver"`     // FakeIP resolver
++	RealResolver    string `yaml:"real_resolver"`     // RealIP resolver
++	DomainSet       string `yaml:"domain_set"`        // 已知域名集合，如果域名在此集合中，将直接使用RealIP解析
++	FakeIPDomainSet string `yaml:"fakeip_domain_set"` // FakeIP域名集合，如果域名在此集合中，将直接使用FakeIP解析
++	IPMatcher       string `yaml:"ip_matcher"`        // IP匹配器，用于检查RealIP是否在特定IP集合中
++}
++
++type forwardFakeIP struct {
++	logger          *zap.Logger
++	fakeResolver    sequence.Executable
++	realResolver    sequence.Executable
++	domainSet       data_provider.WriteableDomainMatcherProvider
++	fakeIPDomainSet data_provider.WriteableDomainMatcherProvider
++	ipMatcher       netlist.Matcher
++	lock            sync.Mutex
++
++	// Metrics
++	queryTotal                   prometheus.Counter
++	directRealResolveTotal       prometheus.Counter
++	directFakeResolveTotal       prometheus.Counter
++	dualResolveTotal             prometheus.Counter
++	realResolverMatchedTotal     prometheus.Counter
++	domainLearnTotal             prometheus.Counter
++	domainLearnFailedTotal       prometheus.Counter
++	fakeipDomainLearnTotal       prometheus.Counter
++	fakeipDomainLearnFailedTotal prometheus.Counter
++	domainSetSize                prometheus.GaugeFunc
++	fakeIPDomainSetSize          prometheus.GaugeFunc
++}
++
++func Init(bp *coremain.BP, args any) (any, error) {
++	return newForwardFakeIPPlugin(bp, args.(*Args))
++}
++
++func newForwardFakeIPPlugin(bp *coremain.BP, args *Args) (*forwardFakeIP, error) {
++	if len(args.FakeResolver) == 0 || len(args.RealResolver) == 0 {
++		return nil, errors.New("args missing fake_resolver or real_resolver")
++	}
++
++	// 获取FakeIP解析器
++	fr := sequence.ToExecutable(bp.M().GetPlugin(args.FakeResolver))
++	if fr == nil {
++		return nil, fmt.Errorf("can not find fake resolver executable %s", args.FakeResolver)
++	}
++
++	// 获取RealIP解析器
++	rr := sequence.ToExecutable(bp.M().GetPlugin(args.RealResolver))
++	if rr == nil {
++		return nil, fmt.Errorf("can not find real resolver executable %s", args.RealResolver)
++	}
++
++	var ds data_provider.WriteableDomainMatcherProvider
++	if len(args.DomainSet) > 0 {
++		provider, _ := bp.M().GetPlugin(args.DomainSet).(data_provider.WriteableDomainMatcherProvider)
++		if provider == nil {
++			return nil, fmt.Errorf("%s is not a WriteableDomainMatcherProvider", args.DomainSet)
++		}
++		ds = provider
++	} else {
++		return nil, errors.New("domain_set is required")
++	}
++
++	// 获取FakeIPDomainSet
++	var fakeIPDS data_provider.WriteableDomainMatcherProvider
++	if len(args.FakeIPDomainSet) > 0 {
++		provider, _ := bp.M().GetPlugin(args.FakeIPDomainSet).(data_provider.WriteableDomainMatcherProvider)
++		if provider == nil {
++			return nil, fmt.Errorf("%s is not a WriteableDomainMatcherProvider", args.FakeIPDomainSet)
++		}
++		fakeIPDS = provider
++	} else {
++		return nil, errors.New("fakeip_domain_set is required")
++	}
++
++	var ipm netlist.Matcher
++	if len(args.IPMatcher) > 0 {
++		provider, _ := bp.M().GetPlugin(args.IPMatcher).(data_provider.IPMatcherProvider)
++		if provider == nil {
++			return nil, fmt.Errorf("%s is not a IPMatcherProvider", args.IPMatcher)
++		}
++		ipm = provider.GetIPMatcher()
++	} else {
++		return nil, errors.New("ip_matcher is required")
++	}
++
++	// 准备labels
++	lb := map[string]string{"tag": bp.Tag()}
++
++	s := &forwardFakeIP{
++		logger:          bp.L(),
++		fakeResolver:    fr,
++		realResolver:    rr,
++		domainSet:       ds,
++		fakeIPDomainSet: fakeIPDS,
++		ipMatcher:       ipm,
++
++		// 初始化指标
++		queryTotal: prometheus.NewCounter(prometheus.CounterOpts{
++			Name:        "query_total",
++			Help:        "The total number of processed queries",
++			ConstLabels: lb,
++		}),
++		directRealResolveTotal: prometheus.NewCounter(prometheus.CounterOpts{
++			Name:        "direct_real_resolve_total",
++			Help:        "The total number of queries resolved directly by realResolver (domain is in domain_set)",
++			ConstLabels: lb,
++		}),
++		directFakeResolveTotal: prometheus.NewCounter(prometheus.CounterOpts{
++			Name:        "direct_fake_resolve_total",
++			Help:        "The total number of queries resolved directly by fakeResolver (domain is in fakeip_domain_set)",
++			ConstLabels: lb,
++		}),
++		dualResolveTotal: prometheus.NewCounter(prometheus.CounterOpts{
++			Name:        "dual_resolve_total",
++			Help:        "The total number of queries needed to be resolved by both resolvers",
++			ConstLabels: lb,
++		}),
++		realResolverMatchedTotal: prometheus.NewCounter(prometheus.CounterOpts{
++			Name:        "real_resolver_matched_total",
++			Help:        "The total number of times that realResolver's IP matched ip_matcher",
++			ConstLabels: lb,
++		}),
++		domainLearnTotal: prometheus.NewCounter(prometheus.CounterOpts{
++			Name:        "domain_learn_total",
++			Help:        "The total number of domains successfully learned and added to domain_set",
++			ConstLabels: lb,
++		}),
++		domainLearnFailedTotal: prometheus.NewCounter(prometheus.CounterOpts{
++			Name:        "domain_learn_failed_total",
++			Help:        "The total number of times failing to add domain to domain_set",
++			ConstLabels: lb,
++		}),
++		fakeipDomainLearnTotal: prometheus.NewCounter(prometheus.CounterOpts{
++			Name:        "fakeip_domain_learn_total",
++			Help:        "The total number of domains successfully learned and added to fakeip_domain_set",
++			ConstLabels: lb,
++		}),
++		fakeipDomainLearnFailedTotal: prometheus.NewCounter(prometheus.CounterOpts{
++			Name:        "fakeip_domain_learn_failed_total",
++			Help:        "The total number of times failing to add domain to fakeip_domain_set",
++			ConstLabels: lb,
++		}),
++	}
++
++	// 单独初始化domainSetSize，这样可以在闭包中捕获ds变量
++	s.domainSetSize = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
++		Name:        "domain_set_size",
++		Help:        "The current number of domains in domain_set",
++		ConstLabels: lb,
++	}, func() float64 {
++		if ds == nil {
++			return 0
++		}
++		return float64(ds.Len())
++	})
++
++	// 初始化fakeIPDomainSetSize
++	s.fakeIPDomainSetSize = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
++		Name:        "fakeip_domain_set_size",
++		Help:        "The current number of domains in fakeip_domain_set",
++		ConstLabels: lb,
++	}, func() float64 {
++		if fakeIPDS == nil {
++			return 0
++		}
++		return float64(fakeIPDS.Len())
++	})
++
++	// 注册指标
++	if err := s.RegMetricsTo(prometheus.WrapRegistererWithPrefix(PluginType+"_", bp.M().GetMetricsReg())); err != nil {
++		return nil, fmt.Errorf("failed to register metrics: %w", err)
++	}
++
++	return s, nil
++}
++
++var _ sequence.Executable = (*forwardFakeIP)(nil)
++
++func (f *forwardFakeIP) Exec(ctx context.Context, qCtx *query_context.Context) error {
++	return f.doForward(ctx, qCtx)
++}
++
++// getDomainType 确定域名应该使用哪种类型的解析方法
++func (f *forwardFakeIP) getDomainType(domainName string) string {
++	// 优先检查是否在RealIP域名集中
++	if f.domainSet != nil {
++		if _, ok := f.domainSet.GetDomainMatcher().Match(domainName); ok {
++			return "real"
++		}
++	}
++
++	// 其次检查是否在FakeIP域名集中
++	if f.fakeIPDomainSet != nil {
++		if _, ok := f.fakeIPDomainSet.GetDomainMatcher().Match(domainName); ok {
++			return "fake"
++		}
++	}
++
++	// 都不在，需要双解析
++	return "dual"
++}
++
++// execDirectResolver 执行直接解析（根据类型使用Real或Fake解析器）
++func (f *forwardFakeIP) execDirectResolver(ctx context.Context, qCtx *query_context.Context, resolverType string) error {
++	var resolver sequence.Executable
++	switch resolverType {
++	case "real":
++		resolver = f.realResolver
++		f.directRealResolveTotal.Inc()
++	case "fake":
++		resolver = f.fakeResolver
++		f.directFakeResolveTotal.Inc()
++	default:
++		return fmt.Errorf("unknown resolver type: %s", resolverType)
++	}
++
++	return resolver.Exec(ctx, qCtx)
++}
++
++// CheckRespIP 检查DNS响应的IP地址是否匹配IP集合
++// 返回状态码和是否匹配:
++// 0: 不是A/AAAA查询或响应中没有A/AAAA记录，不应处理
++// 1: 是A/AAAA查询，IP匹配
++// 2: 是A/AAAA查询，IP不匹配
++func (f *forwardFakeIP) CheckRespIP(q *dns.Msg, r *dns.Msg) int {
++	// 检查请求是否为A或AAAA类型记录
++	if len(q.Question) == 0 {
++		return 0
++	}
++
++	questionType := q.Question[0].Qtype
++	if questionType != dns.TypeA && questionType != dns.TypeAAAA {
++		return 0 // 不是A或AAAA查询，不处理
++	}
++
++	// 检查响应是否包含A或AAAA记录
++	hasIPRecord := false
++	for _, rr := range r.Answer {
++		if rr.Header().Rrtype == dns.TypeA || rr.Header().Rrtype == dns.TypeAAAA {
++			hasIPRecord = true
++			break
++		}
++	}
++
++	if !hasIPRecord {
++		return 0 // 没有IP记录或没有IP匹配器，不处理
++	}
++
++	// 检查IP是否匹配IP集合
++	for _, rr := range r.Answer {
++		var ip net.IP
++		switch rr := rr.(type) {
++		case *dns.A:
++			ip = rr.A
++		case *dns.AAAA:
++			ip = rr.AAAA
++		default:
++			continue
++		}
++
++		addr, ok := netip.AddrFromSlice(ip)
++		if ok && f.ipMatcher.Match(addr) {
++			f.realResolverMatchedTotal.Inc()
++			return 1 // IP匹配
++		}
++	}
++
++	return 2 // IP不匹配
++}
++
++func (f *forwardFakeIP) doForward(ctx context.Context, qCtx *query_context.Context) error {
++	// 统计查询总数
++	f.queryTotal.Inc()
++
++	// 获取查询的域名
++	if len(qCtx.Q().Question) == 0 {
++		f.logger.Debug("query has no question")
++		return nil
++	}
++	domainName := qCtx.Q().Question[0].Name
++
++	// 确定域名应该使用的解析方法
++	resolverType := f.getDomainType(domainName)
++
++	// 如果域名在已知集合中，直接使用相应解析器
++	if resolverType == "real" || resolverType == "fake" {
++		return f.execDirectResolver(ctx, qCtx, resolverType)
++	}
++
++	// 执行双解析
++	f.dualResolveTotal.Inc()
++	qCtxR := qCtx.Copy() // 复制查询上下文用于RealIP解析
++	respChan := make(chan *dns.Msg, 1)
++	doneChan := make(chan struct{})
++	defer close(doneChan)
++
++	// 启动RealIP解析协程
++	go func() {
++		ctx, cancel := makeDdlCtx(ctx, defaultParallelTimeout)
++		defer cancel()
++
++		// 执行RealIP解析
++		if err := f.realResolver.Exec(ctx, qCtxR); err != nil {
++			f.logger.Debug("real resolver error", qCtxR.InfoField(), zap.Error(err))
++			return
++		}
++
++		r := qCtxR.R()
++		if r == nil {
++			return
++		}
++
++		// 检查IP并学习域名
++		result := f.CheckRespIP(qCtx.Q(), r)
++
++		// 根据结果代码决定操作
++		switch result {
++		case 1: // IP匹配
++			// 添加到RealIP域名集
++			if err := f.addDomainTo(qCtx.Q(), f.domainSet, "domain_set"); err != nil {
++				f.domainLearnFailedTotal.Inc()
++			} else {
++				f.domainLearnTotal.Inc()
++			}
++		case 2: // IP不匹配
++			// 添加到FakeIP域名集
++			if f.fakeIPDomainSet != nil {
++				if err := f.addDomainTo(qCtx.Q(), f.fakeIPDomainSet, "fakeip_domain_set"); err != nil {
++					f.fakeipDomainLearnFailedTotal.Inc()
++				} else {
++					f.fakeipDomainLearnTotal.Inc()
++				}
++			}
++		case 0: // 不是A/AAAA查询或没有IP记录，不做任何处理
++			// 不进行任何域名学习操作
++		}
++
++		// 发送响应
++		select {
++		case respChan <- r:
++		case <-doneChan:
++		}
++	}()
++
++	// 主线程执行FakeIP解析
++	if err := f.fakeResolver.Exec(ctx, qCtx); err != nil {
++		// FakeIP解析失败，尝试等待RealIP结果
++		select {
++		case r := <-respChan:
++			qCtx.SetResponse(r)
++			return nil
++		case <-ctx.Done():
++			return context.Cause(ctx)
++		}
++	}
++
++	// FakeIP解析成功，直接返回结果
++	return nil
++}
++
++// addDomainTo 是一个通用函数，用于将域名添加到指定的域名集合中
++func (f *forwardFakeIP) addDomainTo(q *dns.Msg, domainSet data_provider.WriteableDomainMatcherProvider, setName string) error {
++	if domainSet == nil || len(q.Question) == 0 {
++		return nil
++	}
++
++	// 检查是否为A或AAAA类型查询
++	questionType := q.Question[0].Qtype
++	if questionType != dns.TypeA && questionType != dns.TypeAAAA {
++		return nil // 不是A或AAAA查询，不添加到域名集
++	}
++
++	// 获取第一个问题的域名
++	domainName := q.Question[0].Name
++
++	// 添加到指定的域名集合
++	f.lock.Lock()
++	defer f.lock.Unlock()
++
++	m := domain.NewDomainMixMatcher()
++	m.SetDefaultMatcher(domain.MatcherFull)
++	err := m.Add(domainName, struct{}{})
++	if err != nil {
++		f.logger.Error("failed to add domain to matcher", zap.String("domain", domainName), zap.Error(err))
++		return err
++	}
++
++	err = domainSet.Add([]string{domainName}, m)
++	if err != nil {
++		f.logger.Error("failed to add domain to "+setName, zap.String("domain", domainName), zap.Error(err))
++	} else {
++		f.logger.Info("added domain to "+setName, zap.String("domain", domainName))
++	}
++	return err
++}
++
++func makeDdlCtx(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
++	ddl, ok := ctx.Deadline()
++	if !ok {
++		ddl = time.Now().Add(timeout)
++	}
++	return context.WithDeadline(context.Background(), ddl)
++}
++
++func (f *forwardFakeIP) RegMetricsTo(r prometheus.Registerer) error {
++	for _, collector := range [...]prometheus.Collector{
++		f.queryTotal,
++		f.directRealResolveTotal,
++		f.directFakeResolveTotal,
++		f.dualResolveTotal,
++		f.realResolverMatchedTotal,
++		f.domainLearnTotal,
++		f.domainLearnFailedTotal,
++		f.fakeipDomainLearnTotal,
++		f.fakeipDomainLearnFailedTotal,
++		f.domainSetSize,
++		f.fakeIPDomainSetSize,
++	} {
++		if err := r.Register(collector); err != nil {
++			return err
++		}
++	}
++	return nil
++}
+-- 
+2.49.0
+
