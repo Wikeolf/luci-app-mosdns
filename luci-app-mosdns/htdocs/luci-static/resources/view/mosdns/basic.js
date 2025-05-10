@@ -248,6 +248,16 @@ return view.extend({
 		o.default = '119.29.29.29';
 		o.depends('configfile', '/var/etc/mosdns.json');
 
+		o = s.taboption('basic', form.Flag, 'enable_fakeip_dns', _('Enable FakeIP DNS'),
+		_('Enable FakeIP Resolver'));
+		o.depends('configfile', '/var/etc/mosdns.json');
+		o.default = false;
+
+		o = s.taboption('basic', form.DynamicList, 'fakeip_dns', _('FakeIP DNS server'));
+		o.value('127.0.0.1:1053', _('localhost clash default FakeIP DNS'));
+		o.default = '127.0.0.1:1053';
+		o.depends('enable_fakeip_dns', '1');
+
 		/* advanced */
 		o = s.taboption('advanced', form.Value, 'concurrent', _('Concurrent'),
 			_('DNS query request concurrency, The number of upstream DNS servers that are allowed to initiate requests at the same time'));
