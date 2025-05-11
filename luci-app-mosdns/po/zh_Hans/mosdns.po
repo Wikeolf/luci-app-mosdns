@@ -443,6 +443,12 @@ msgstr "灰名单"
 msgid "Added domain names will always use 'Remote DNS' for resolution (one domain per line, supports domain matching rules)."
 msgstr "加入的域名始终使用 “远程 DNS” 进行解析（每个域名一行，支持域名匹配规则）"
 
+msgid "Fake Lists"
+msgstr "Fake名单"
+
+msgid "Added domain names will always use 'FakeIP DNS' for resolution (one domain per line, supports domain matching rules)."
+msgstr "加入的域名始终使用 “FakeIP DNS” 进行解析（每个域名一行，支持域名匹配规则）"
+
 msgid "DDNS Lists"
 msgstr "DDNS 域名"
 
