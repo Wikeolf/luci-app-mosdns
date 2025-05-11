@@ -18,6 +18,7 @@ return view.extend({
 		s.tab('whitelist', _('White Lists'));
 		s.tab('blocklist', _('Block Lists'));
 		s.tab('greylist', _('Grey Lists'));
+		s.tab('fakelist', _('Fake Lists'));
 		s.tab('ddnslist', _('DDNS Lists'));
 		s.tab('hostslist', _('Hosts'));
 		s.tab('redirectlist', _('Redirect'));
@@ -90,6 +91,30 @@ return view.extend({
 					return;
 				}
 				return fs.write('/etc/mosdns/rule/greylist.txt', formvalue.trim().replace(/\r\n/g, '\n') + '\n')
+					.catch(function (e) {
+						ui.addNotification(null, E('p', _('Unable to save contents: %s').format(e.message)));
+					});
+			});
+		};
+
+		o = s.taboption('fakelist', form.TextValue, '_fakelist',
+			null,
+			'<font color=\'red\'>'
+			+ _('Added domain names will always use \'FakeIP DNS\' for resolution (one domain per line, supports domain matching rules).')
+			+ '</font>'
+		);
+		o.rows = 25;
+		o.cfgvalue = function (section_id) {
+			return fs.trimmed('/etc/mosdns/rule/fakelist.txt').catch(function (e) {
+				return "";
+			});
+		};
+		o.write = function (section_id, formvalue) {
+			return this.cfgvalue(section_id).then(function (value) {
+				if (value == formvalue) {
+					return;
+				}
+				return fs.write('/etc/mosdns/rule/fakelist.txt', formvalue.trim().replace(/\r\n/g, '\n') + '\n')
 					.catch(function (e) {
 						ui.addNotification(null, E('p', _('Unable to save contents: %s').format(e.message)));
 					});

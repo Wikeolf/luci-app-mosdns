@@ -158,6 +158,16 @@ generate_config() {
 	json_close_array
 	json_close_object
 	json_close_object
+	# plugin: fakelist
+	json_add_object
+	json_add_string "tag" "fakelist"
+	json_add_string "type" "domain_set"
+	json_add_object "args"
+	json_add_array "files"
+	json_add_string "" "/etc/mosdns/rule/fakelist.txt"
+	json_close_array
+	json_close_object
+	json_close_object
 	# plugin: ddnslist
 	json_add_object
 	json_add_string "tag" "ddnslist"
@@ -585,6 +595,17 @@ generate_config() {
 	json_close_object
 	json_close_array
 	json_close_object
+	# plugin: query_is_fakelist_domain
+	json_add_object
+	json_add_string "tag" "query_is_fakelist_domain"
+	json_add_string "type" "sequence"
+	json_add_array "args"
+	json_add_object
+	json_add_string "matches" "qname \$fakelist"
+	json_add_string "exec" "\$forward_fakeip_upstream"
+	json_close_object
+	json_close_array
+	json_close_object
 	# plugin: query_is_reject_domain
 	json_add_object
 	json_add_string "tag" "query_is_reject_domain"
@@ -686,6 +707,14 @@ generate_config() {
 	[ "$custom_stream_media_dns" -eq 1 ] && {
 		json_add_object
 		json_add_string "exec" "\$query_is_stream_media_domain"
+		json_close_object
+		json_add_object
+		json_add_string "exec" "jump has_resp_sequence"
+		json_close_object
+	}
+	[ "$enable_fakeip_dns" -eq 1 ] && {
+		json_add_object
+		json_add_string "exec" "\$query_is_fakelist_domain"
 		json_close_object
 		json_add_object
 		json_add_string "exec" "jump has_resp_sequence"
