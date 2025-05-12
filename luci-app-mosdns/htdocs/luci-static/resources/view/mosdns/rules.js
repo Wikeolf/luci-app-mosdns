@@ -24,6 +24,7 @@ return view.extend({
 		s.tab('redirectlist', _('Redirect'));
 		s.tab('localptrlist', _('Block PTR'));
 		s.tab('streamingmedialist', _('Streaming Media'));
+		s.tab('proxylist', _('Proxy List'));
 
 		o = s.taboption('whitelist', form.TextValue, '_whitelist',
 			null,
@@ -235,6 +236,30 @@ return view.extend({
 					return;
 				}
 				return fs.write('/etc/mosdns/rule/streaming.txt', formvalue.trim().replace(/\r\n/g, '\n') + '\n')
+					.catch(function (e) {
+						ui.addNotification(null, E('p', _('Unable to save contents: %s').format(e.message)));
+					});
+			});
+		};
+
+		o = s.taboption('proxylist', form.TextValue, '_proxylist',
+			null,
+			'<font color=\'red\'>'
+			+ _('Add LAN IP to always use the FakeIP DNS resolution (one IP per line, supports CIDR).')
+			+ '</font>'
+		);
+		o.rows = 25;
+		o.cfgvalue = function (section_id) {
+			return fs.trimmed('/etc/mosdns/rule/proxylist.txt').catch(function (e) {
+				return "";
+			});
+		};
+		o.write = function (section_id, formvalue) {
+			return this.cfgvalue(section_id).then(function (value) {
+				if (value == formvalue) {
+					return;
+				}
+				return fs.write('/etc/mosdns/rule/proxylist.txt', formvalue.trim().replace(/\r\n/g, '\n') + '\n')
 					.catch(function (e) {
 						ui.addNotification(null, E('p', _('Unable to save contents: %s').format(e.message)));
 					});

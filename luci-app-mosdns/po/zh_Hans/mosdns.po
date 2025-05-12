@@ -443,6 +443,12 @@ msgstr "DDNS 域名"
 msgid "Added domain names will always use 'Local DNS' for resolution, with a forced TTL of 5 seconds, and results will not be cached (one domain per line, supports domain matching rules)."
 msgstr "加入的域名始终使用 “本地 DNS” 进行解析，并且强制 TTL 5 秒，解析结果不会进入缓存（每个域名一行，支持域名匹配规则）"
 
+msgid "Proxy List"
+msgstr "代理列表"
+
+msgid "Add LAN IP to always use the FakeIP DNS resolution (one IP per line, supports CIDR)."
+msgstr "添加局域网IP以始终通过 FakeIP DNS 进行解析（每行一个IP，支持CIDR格式）。"
+
 msgid "Custom Hosts rewrite, for example: baidu.com 10.0.0.1 (one rule per line, supports domain matching rules)."
 msgstr "自定义 Hosts 重写，如：baidu.com 10.0.0.1（每个规则一行，支持域名匹配规则）"
 
