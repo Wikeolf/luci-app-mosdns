@@ -1,6 +1,6 @@
-From a6f0dc6b231145b16b3fac725eb553e5e632cb12 Mon Sep 17 00:00:00 2001
-From: Wikeolf <Wikeolf@Gmail.com>
-Date: Sat, 10 May 2025 20:31:59 +0800
+From 61614412bc3d05bc0d33ec6e86499382ae2ccae7 Mon Sep 17 00:00:00 2001
+From: Wikeolf <wikeolf@gmail.com>
+Date: Wed, 22 Oct 2025 17:44:07 +0800
 Subject: [PATCH] feat: add forward_fakeip plugins support fakeip resolve and
  direct resolve domain learning and add WriteableDomainMatcherProvider
  interface and implement locking in DomainSet
@@ -9,8 +9,8 @@ Subject: [PATCH] feat: add forward_fakeip plugins support fakeip resolve and
  plugin/data_provider/domain_set/domain_set.go |  42 +-
  plugin/data_provider/iface.go                 |   6 +
  plugin/enabled_plugins.go                     |   1 +
- .../sequence/fakeip/forward_fakeip.go         | 476 ++++++++++++++++++
- 4 files changed, 522 insertions(+), 3 deletions(-)
+ .../sequence/fakeip/forward_fakeip.go         | 452 ++++++++++++++++++
+ 4 files changed, 498 insertions(+), 3 deletions(-)
  create mode 100644 plugin/executable/sequence/fakeip/forward_fakeip.go
 
 diff --git a/plugin/data_provider/domain_set/domain_set.go b/plugin/data_provider/domain_set/domain_set.go
@@ -117,10 +117,10 @@ index 764811f..9d1830c 100644
  	// executable and matcher
 diff --git a/plugin/executable/sequence/fakeip/forward_fakeip.go b/plugin/executable/sequence/fakeip/forward_fakeip.go
 new file mode 100644
-index 0000000..19fc4ae
+index 0000000..863d589
 --- /dev/null
 +++ b/plugin/executable/sequence/fakeip/forward_fakeip.go
-@@ -0,0 +1,476 @@
+@@ -0,0 +1,452 @@
 +/*
 + * Copyright (C) 2020-2022, IrineSistiana
 + *
@@ -392,36 +392,14 @@ index 0000000..19fc4ae
 +	return resolver.Exec(ctx, qCtx)
 +}
 +
-+// CheckRespIP 检查DNS响应的IP地址是否匹配IP集合
-+// 返回状态码和是否匹配:
-+// 0: 不是A/AAAA查询或响应中没有A/AAAA记录，不应处理
-+// 1: 是A/AAAA查询，IP匹配
-+// 2: 是A/AAAA查询，IP不匹配
-+func (f *forwardFakeIP) CheckRespIP(q *dns.Msg, r *dns.Msg) int {
-+	// 检查请求是否为A或AAAA类型记录
-+	if len(q.Question) == 0 {
-+		return 0
++// checkIPAndLearnDomain 检查RealIP并根据结果学习域名
++func (f *forwardFakeIP) checkIPAndLearnDomain(r *dns.Msg) bool {
++	// 检查RealIP是否在指定的IP集合中
++	if f.ipMatcher == nil {
++		return false
 +	}
 +
-+	questionType := q.Question[0].Qtype
-+	if questionType != dns.TypeA && questionType != dns.TypeAAAA {
-+		return 0 // 不是A或AAAA查询，不处理
-+	}
-+
-+	// 检查响应是否包含A或AAAA记录
-+	hasIPRecord := false
-+	for _, rr := range r.Answer {
-+		if rr.Header().Rrtype == dns.TypeA || rr.Header().Rrtype == dns.TypeAAAA {
-+			hasIPRecord = true
-+			break
-+		}
-+	}
-+
-+	if !hasIPRecord {
-+		return 0 // 没有IP记录或没有IP匹配器，不处理
-+	}
-+
-+	// 检查IP是否匹配IP集合
++	matched := false
 +	for _, rr := range r.Answer {
 +		var ip net.IP
 +		switch rr := rr.(type) {
@@ -435,17 +413,26 @@ index 0000000..19fc4ae
 +
 +		addr, ok := netip.AddrFromSlice(ip)
 +		if ok && f.ipMatcher.Match(addr) {
++			matched = true
 +			f.realResolverMatchedTotal.Inc()
-+			return 1 // IP匹配
++			break
 +		}
 +	}
 +
-+	return 2 // IP不匹配
++	// 返回是否匹配，外部根据结果决定加入哪个域名集
++	return matched
 +}
 +
 +func (f *forwardFakeIP) doForward(ctx context.Context, qCtx *query_context.Context) error {
 +	// 统计查询总数
 +	f.queryTotal.Inc()
++
++	// 放行A/AAAA以外的请求
++	question := qCtx.Q().Question[0]
++	if question.Qtype != dns.TypeA && question.Qtype != dns.TypeAAAA {
++		f.directRealResolveTotal.Inc()
++		return f.realResolver.Exec(ctx, qCtx)
++	}
 +
 +	// 获取查询的域名
 +	if len(qCtx.Q().Question) == 0 {
@@ -486,28 +473,23 @@ index 0000000..19fc4ae
 +		}
 +
 +		// 检查IP并学习域名
-+		result := f.CheckRespIP(qCtx.Q(), r)
++		matched := f.checkIPAndLearnDomain(r)
 +
-+		// 根据结果代码决定操作
-+		switch result {
-+		case 1: // IP匹配
-+			// 添加到RealIP域名集
++		// 根据匹配结果决定添加到哪个域名集
++		if matched {
++			// IP匹配，添加到RealIP域名集
 +			if err := f.addDomainTo(qCtx.Q(), f.domainSet, "domain_set"); err != nil {
 +				f.domainLearnFailedTotal.Inc()
 +			} else {
 +				f.domainLearnTotal.Inc()
 +			}
-+		case 2: // IP不匹配
-+			// 添加到FakeIP域名集
-+			if f.fakeIPDomainSet != nil {
-+				if err := f.addDomainTo(qCtx.Q(), f.fakeIPDomainSet, "fakeip_domain_set"); err != nil {
-+					f.fakeipDomainLearnFailedTotal.Inc()
-+				} else {
-+					f.fakeipDomainLearnTotal.Inc()
-+				}
++		} else if f.fakeIPDomainSet != nil {
++			// IP不匹配，添加到FakeIP域名集
++			if err := f.addDomainTo(qCtx.Q(), f.fakeIPDomainSet, "fakeip_domain_set"); err != nil {
++				f.fakeipDomainLearnFailedTotal.Inc()
++			} else {
++				f.fakeipDomainLearnTotal.Inc()
 +			}
-+		case 0: // 不是A/AAAA查询或没有IP记录，不做任何处理
-+			// 不进行任何域名学习操作
 +		}
 +
 +		// 发送响应
@@ -537,12 +519,6 @@ index 0000000..19fc4ae
 +func (f *forwardFakeIP) addDomainTo(q *dns.Msg, domainSet data_provider.WriteableDomainMatcherProvider, setName string) error {
 +	if domainSet == nil || len(q.Question) == 0 {
 +		return nil
-+	}
-+
-+	// 检查是否为A或AAAA类型查询
-+	questionType := q.Question[0].Qtype
-+	if questionType != dns.TypeA && questionType != dns.TypeAAAA {
-+		return nil // 不是A或AAAA查询，不添加到域名集
 +	}
 +
 +	// 获取第一个问题的域名
@@ -598,5 +574,5 @@ index 0000000..19fc4ae
 +	return nil
 +}
 -- 
-2.49.0
+2.51.1
 
